@@ -1,0 +1,29 @@
+# OS and editor clutter
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Local tooling (Claude Code preview config, dependencies, logs)
+.claude/
+node_modules/
+npm-debug.log*
+*.log
+
+# Apps Script CLI (clasp): .clasprc.json holds Google login tokens. Never commit it.
+.clasprc.json
+.clasp.json
+
+# Local secrets, if any are ever added
+.env
+.env.*
+
+# Source art and screen recordings (commit only the exported assets/*.webp)
+assets/src/
+*.psd
+*.mov
+*.mp4
+
+# Real team data for loading into the Google Sheet. Private: never commit.
+sheet-import/

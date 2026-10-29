@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!--
+    Content Security Policy: the page may only load code from itself and the
+    SheetJS CDN, talk only to Apps Script, and embed only YouTube. Inline
+    styles are allowed for the few style="" attributes the views set.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-src https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Juppies</title>
+  <meta name="description" content="Juppies team hub: training and match RSVPs, results and player stats.">
+  <meta name="theme-color" content="#F4F4F7">
+  <link rel="icon" href="logo.png">
+  <link rel="apple-touch-icon" href="logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="css/app.css">
+  <!-- SheetJS: Excel import/export on the Admin page. 0.20.3 from SheetJS's own CDN (the npm/cdnjs
+       builds stop at 0.18.5, which has known vulnerabilities). The integrity hash pins the exact file. -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
+    integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT"
+    crossorigin="anonymous" defer></script>
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <img class="topbar__logo" src="logo.png" alt="">
+    <span class="topbar__name">Juppies</span>
+    <span class="topbar__spacer"></span>
+    <button class="name-pill" id="me-button" type="button">Pick your name</button>
+    <button class="icon-button" id="theme-button" type="button"></button>
+  </header>
+  <nav class="tabbar" id="tabs" aria-label="Sections"></nav>
+  <main id="app"></main>
+  <div id="modal"></div>
+  <noscript>Juppies needs JavaScript to run.</noscript>
+</body>
+</html>
