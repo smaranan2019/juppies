@@ -4,11 +4,13 @@
   <meta charset="utf-8">
   <!--
     Content Security Policy: the page may only load code from itself and the
-    SheetJS CDN, talk only to Apps Script, and embed only YouTube. Inline
+    SheetJS CDN, talk only to Supabase, and embed only YouTube. Inline
     styles are allowed for the few style="" attributes the views set.
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-src https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.supabase.co; frame-src https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
+  <!-- Team data (names, availability) shouldn't appear in search results. -->
+  <meta name="robots" content="noindex, nofollow">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Juppies</title>
   <meta name="description" content="Juppies team hub: training and match RSVPs, results and player stats.">
@@ -20,11 +22,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/theme.css">
   <link rel="stylesheet" href="css/app.css">
-  <!-- SheetJS: Excel import/export on the Admin page. 0.20.3 from SheetJS's own CDN (the npm/cdnjs
-       builds stop at 0.18.5, which has known vulnerabilities). The integrity hash pins the exact file. -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
-    integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT"
-    crossorigin="anonymous" defer></script>
+  <!-- supabase-js 2.117.3, self-hosted (see js/supabase-client.js). -->
+  <script src="js/vendor/supabase.js" defer></script>
   <script type="module" src="js/main.js"></script>
 </head>
 <body>

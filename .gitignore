@@ -11,10 +11,6 @@ node_modules/
 npm-debug.log*
 *.log
 
-# Apps Script CLI (clasp): .clasprc.json holds Google login tokens. Never commit it.
-.clasprc.json
-.clasp.json
-
 # Local secrets, if any are ever added
 .env
 .env.*
@@ -25,5 +21,8 @@ assets/src/
 *.mov
 *.mp4
 
-# Real team data for loading into the Google Sheet. Private: never commit.
+# Old CSV export of the real team data (from the Google Sheet days). Private: never commit.
 sheet-import/
+
+# Real team data for loading into Supabase. Private: never commit.
+private-data/

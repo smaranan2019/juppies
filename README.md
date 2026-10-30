@@ -1,18 +1,18 @@
 # Juppies
 
 A team hub for the NUS Jupitans: training and match RSVPs, match results, player stats and match videos.
-Players pick their name once (no logins). Admins unlock editing with a PIN.
+Players pick their name once (no logins). Admins sign in with an email link.
 
 **Everyone can see** the schedule, who's coming, results, scorers, assists, the player of the match, the season leaderboard and attendance.
 **Only admins can change** things: the schedule, results, stats, players and videos. Only admins can read the feedback inbox.
 
 | Part | What it does | Who touches it |
 |---|---|---|
-| Google Sheet | Stores everything (one tab per kind of data) | Admins, to fix data by hand |
-| `backend/*.gs` (Apps Script) | Lets the app read and write the Sheet | Nobody after setup |
+| Supabase (Postgres database) | Stores everything and enforces every rule | Admins, to fix data by hand in the Table Editor |
+| `supabase/setup.sql` | Tables, security rules and the functions the app calls | Nobody after setup |
 | `index.html`, `css/`, `js/`, `logo.png` (GitHub Pages) | The app players open on their phones | Nobody after setup |
 
-Try it first with `npm start` and then open <http://localhost:8000>. With no Sheet connected (empty `API_URL`), it runs in **demo mode**: the real 2026/27 fixtures, results and streams, with made-up player names, RSVP reasons and trainings. The admin PIN is `1234` (demo only).
+Try it with `npm start` and open <http://localhost:8000>. With no Supabase project configured (empty `SUPABASE_URL`), it runs in **demo mode**: the real 2026/27 fixtures, results and streams, with made-up players and trainings. In demo mode any email signs you in as admin.
 
 ---
 
@@ -20,9 +20,10 @@ Try it first with `npm start` and then open <http://localhost:8000>. With no She
 
 | Task | Where |
 |---|---|
-| **Enter a match result** | Admin → *Match results* lists finished matches without a score. Open one → **Enter result** → type the score, tick who played, add goals and assists, pick the player of the match → **Save result**. |
-| Fix a result | Open the match (Matches → Results, or Stats → Results) → **Edit**. **Delete result** removes it. |
-| Upload or update the schedule | Admin → *Upload match schedule*. Re-uploading updates times and never overwrites RSVPs players gave in the app. |
+| **Sign in** | Admin → type your email → open the link we email you |
+| **Enter a match result** | Admin → *Match results* lists finished matches without a score. Open one → **Enter result** → tick who played, add goals and assists (the score adds itself up), pick the player of the match → **Save result** |
+| Fix a result | Open the match (Matches → Results, or Stats → Results) → **Edit**. **Delete result** removes it |
+| Upload or update the schedule | Admin → *Upload match schedule*. Re-uploading updates times and never overwrites RSVPs players gave in the app |
 | Cancel a training or match | Open the session → **Cancel session** |
 | Extra training or friendly | Admin → *Add a one-off session* |
 | Add a match video | Open the match → paste a YouTube link |
@@ -33,117 +34,114 @@ Try it first with `npm start` and then open <http://localhost:8000>. With no She
 **Result rules:** our score adds itself up from player goals as you type. To record an own goal, type a higher score and the extra is kept as "goals without a scorer". Assists can't exceed the score. The player of the match must be someone who played.
 **Attendance:** once a match has a lineup (who played), attendance counts who actually played. Otherwise, including for trainings, it counts who RSVP'd Going.
 
-**Fixing things in the Sheet directly** is fine. Two rules: don't rename tabs or header cells, and **cancel sessions instead of deleting rows** (deleted trainings get recreated). You can add your own columns to the right of the existing ones.
+### Fixing data by hand (Supabase → Table Editor)
+The Table Editor works like a spreadsheet. It's fine to correct a typo or change an RSVP after the cutoff. **Cancel sessions instead of deleting them** (deleted trainings get recreated).
 
-### Sheet tabs
-
-| Tab | One row per | Notes |
+| Table | One row per | Notes |
 |---|---|---|
-| Settings | setting | See below |
-| Players | player | `Active` is TRUE/FALSE |
-| TrainingSlots | weekly training | e.g. Tuesday 18:45–21:30. New times apply to sessions created from then on |
-| Sessions | training or match | `Status` is Active/Cancelled |
-| RSVPs | player per session | |
-| Videos | YouTube link | |
-| Feedback | message | `Status` is New/Seen/Done |
-| MatchResults | match with a result | Score and player of the match |
-| PlayerStats | player per match they played | Goals and assists. Being listed means they played |
-
-| Setting | Meaning |
-|---|---|
-| `ADMIN_PIN` | The admin PIN, at least 6 characters. Change it if it leaks. After 10 wrong guesses, admin unlock pauses for 10 minutes. |
-| `TRAINING_LOCK_HOURS` / `MATCH_LOCK_HOURS` | RSVP cutoff (2 and 12). After it, Going/Not going are locked; TBC or no answer can still change. |
-| `WEEKS_AHEAD` | How far ahead trainings appear (3). |
-| `TRAINING_START` | First date trainings are created from. |
-| `MATCH_VENUE` | Optional, shown on every match. |
+| `settings` | (one row) | `training_lock_hours` / `match_lock_hours`: RSVP cutoff (2 and 12). `weeks_ahead`: how far ahead trainings appear (3). `training_start`: first date trainings are created from. `match_venue`: shown on every match |
+| `admins` | admin email | **Add or remove admins here** (lower-case emails) |
+| `players` | player | `active` false hides them from the name list |
+| `training_slots` | weekly training | `weekday` 0 = Sunday … 6 = Saturday. New times apply to sessions created from then on |
+| `sessions` | training or match | `status` is Active/Cancelled |
+| `rsvps` | player per session | |
+| `videos` | YouTube link | |
+| `feedback` | message | `status` is New/Seen/Done |
+| `match_results` | match with a result | Score and player of the match |
+| `player_stats` | player per match they played | Goals and assists. Being listed means they played |
 
 ---
 
-## One-time setup (about 15 minutes)
+## One-time setup (about 20 minutes)
 
-### 1. Create the Sheet and backend
-1. Go to [sheets.new](https://sheets.new) and name it **Juppies**.
-2. **Extensions → Apps Script**. For each file in `backend/`, create a script file with the same name (＋ → Script) and paste its contents. Replace the default `Code.gs` contents with `Config.gs` (or delete it).
-   In **Project Settings**, tick *Show "appsscript.json"* and paste `backend/appsscript.json` into it.
-   *(Developers: `clasp push` from `backend/` does the same.)*
-3. Pick **setup** in the function dropdown, click **Run**, and approve the permissions prompt (*Advanced → Go to project*).
-4. In the **Settings** tab in the Google Sheet (not the script editor), change `ADMIN_PIN` to something **at least 6 characters** long. Admin tools stay locked while it's `1234` or shorter.
+### 1. Create the database
+1. Sign up at [supabase.com](https://supabase.com) and create a **New project** (region: *Southeast Asia (Singapore)*). Save the database password somewhere safe.
+2. Open **SQL Editor → New query**, paste all of [`supabase/setup.sql`](supabase/setup.sql), click **Run**. You should see "Success. No rows returned".
+3. To load the team's real data, run `private-data/real-data.sql` the same way. That file is kept out of git on purpose because it holds real names.
 
-### 2. Publish the backend
-**Deploy → New deployment → ⚙ → Web app**, *Execute as:* **Me**, *Who has access:* **Anyone** → **Deploy**. Copy the URL ending in `/exec`.
+### 2. Set up admin sign-in
+1. **Authentication → Sign In / Providers**: keep **Email** on, and turn **off** *Allow new users to sign up*. Admins are added by you, never by strangers.
+2. **Authentication → URL Configuration**: set **Site URL** to your GitHub Pages address (e.g. `https://smaranan2019.github.io/juppies/`). Under **Redirect URLs** add that address and `http://localhost:8000/`.
+3. **Authentication → Users → Add user → Send invitation** for each admin's email.
+4. **Table Editor → admins → Insert row** with the same email, all lower-case.
 
-### 3. Publish the app on GitHub Pages
-1. Push this folder to a GitHub repo.
-2. In `js/config.js`, paste the `/exec` URL into `API_URL` and commit.
-3. Repo **Settings → Pages → Branch: main, folder: / (root) → Save**.
+**About email delivery:** Supabase's built-in email sender is meant for getting started. It has a low hourly limit and may only deliver to members of your Supabase team. If an admin doesn't receive their link, set up your own sender under **Authentication → Emails → SMTP Settings** (a free account at an email service such as Resend or Brevo works).
 
-### 4. Load the season
-Open the app → **Admin** → PIN → **Upload match schedule** → choose the Excel → tick *Also import RSVPs* → **Preview** → **Import**. This also builds the player list.
+### 3. Connect the app
+1. In Supabase, go to **Project Settings → API** (or **API Keys**) and copy the **Project URL** and the **anon public** key (newer projects call it the *publishable* key).
+2. Paste both into [`js/config.js`](js/config.js). They're public by design, so it's fine to commit them.
+3. Commit and push. GitHub Pages republishes in a minute or two.
 
-### Upgrading an existing Sheet
-Paste in the new `backend/*.gs` files, run **setup** once (it adds the `MatchResults` and `PlayerStats` tabs and leaves your data alone), then **Deploy → Manage deployments → ✏ → Version: New version → Deploy**. The URL stays the same.
+### 4. Publish on GitHub Pages (once)
+Repo **Settings → Pages → Deploy from a branch → `main`, `/ (root)` → Save**.
+
+### Updating the database later
+When `supabase/setup.sql` changes, paste it into the SQL Editor and **Run** again. It updates rules and functions and never deletes data.
 
 ---
 
 ## For developers
 
-No build step: the app is plain ES modules served as static files. That keeps GitHub Pages deploys to a commit and lets a non-developer change `js/config.js` in the GitHub web editor.
+No build step: the app is plain ES modules served as static files. That keeps GitHub Pages deploys to a commit and lets a non-developer edit `js/config.js` in the GitHub web editor.
 
 ```
-index.html            page shell
-css/theme.css         design tokens (light + dark)
-css/app.css           layout and components
-js/main.js            entry point: wires state, rendering, events
-js/store.js           UI state; setState() re-renders
-js/render.js          state -> DOM (tabs, page, bottom sheet)
-js/actions.js         click / submit / change handlers (data-action, data-form, data-change)
-js/controller.js      load data, run backend actions
-js/api.js             backend client (real or demo)
-js/demo-backend.js    in-memory backend mirroring backend/*.gs
-js/demo-schedule.js   2026/27 fixtures + results with made-up players; used by the demo and tests
-js/logic/             pure, tested functions: dates, ids, rsvp, match-result, stats, selectors, schedule-import
-js/ui/                html`` templating (auto-escaping), formatting, icons, toast, theme, effects (motion)
-assets/               illustrations (optional; see assets/README.md)
-js/views/             one module per page, plus shared components
-js/admin/excel.js     Excel import/export (SheetJS from CDN)
-backend/              Apps Script, split by concern; see Config.gs for the map
-tests/                node:test unit tests for js/logic
+index.html              page shell
+css/theme.css           design tokens (light + dark)
+css/app.css             layout and components
+js/main.js              entry point: wires state, rendering, events
+js/store.js             UI state; setState() re-renders
+js/render.js            state -> DOM (tabs, page, bottom sheet)
+js/actions.js           click / submit / change / input handlers
+js/controller.js        load data, run actions, admin sign-in
+js/api.js               action -> database function (RPC_CALLS), or the demo backend
+js/auth.js              email magic-link sign-in
+js/supabase-client.js   the shared Supabase client
+js/vendor/supabase.js   supabase-js 2.117.3, self-hosted
+js/demo-backend.js      in-memory backend mirroring supabase/setup.sql
+js/demo-schedule.js     2026/27 fixtures + results with made-up players (demo and tests)
+js/logic/               pure, tested functions: dates, ids, rsvp, match-result, stats, selectors, schedule-import
+js/ui/                  html`` templating (auto-escaping), formatting, icons, toast, theme, effects (motion)
+js/views/               one module per page, plus shared components
+js/admin/excel.js       Excel import/export (SheetJS from CDN)
+assets/                 illustrations (optional; see assets/README.md)
+supabase/setup.sql      the whole database: tables, row-level security, functions
+tests/                  node:test unit tests, plus database.test.js which runs setup.sql in PGlite
 ```
 
 ```bash
-npm test     # unit tests (Node 20+, no dependencies)
+npm install  # once: installs PGlite (real Postgres in WebAssembly) for the database tests
+npm test     # all tests (Node 20+)
 npm start    # serves the app on http://localhost:8000 (ES modules don't load from file://)
 ```
 
 **Conventions**
 - Views are pure functions of state that return `html```, which escapes every interpolated value. Raw markup only goes through `trusted()`, which is used for static icons.
 - Views don't attach listeners. They declare `data-action` / `data-form` / `data-change` / `data-input`, and `js/actions.js` maps those to handlers.
+- Every app action is one Postgres function. `RPC_CALLS` in `js/api.js` is the full list, and `tests/database.test.js` fails if a function or parameter name drifts.
+- After any write, the app reloads the full bootstrap payload. The data is small, and this keeps the screen identical to the database.
+- Rules are enforced in the database and repeated in the browser for instant feedback: `validateMatchResult` ↔ `match_result_errors`, `isLocked` ↔ `submit_rsvp`, `matchId`/`youTubeId` ↔ `match_id`/`youtube_id`. Each copy names its twin, and the database tests check the id helpers agree.
 - Motion is reserved for big moments: page entrance, the sheet opening, the scoreboard reveal and confetti on a saved win. It plays only on navigation or opening (never on re-render), and is off under `prefers-reduced-motion`.
-- After any write, the app reloads the full bootstrap payload. The data is small, and this keeps the screen identical to the Sheet.
-- Rules that both sides enforce live in two places on purpose, because Apps Script can't import ES modules: `validateMatchResult` (`js/logic/match-result.js` ↔ `backend/Matches.gs`), RSVP locking (`js/logic/rsvp.js` ↔ `backend/Rsvps.gs`), and id and time helpers. Each copy names its twin, so change both.
-- The backend reads columns by header name, so admins can add columns without breaking it.
 
 **Security model**
-- The admin PIN is a shared secret, checked on the server for every admin action. The setup default `1234` and anything under 6 characters are refused. 10 wrong guesses pause admin unlock for 10 minutes, so the PIN can't be brute-forced. The PIN is only ever sent in POST bodies, never in URLs. Rotate it when admins change.
-- `API_URL` (the `/exec` link) is public by design, because every visitor's browser calls it. It grants nothing without the PIN.
-- No logins: anyone with the link can RSVP or send feedback under any player's name. That's the agreed trade-off for a team tool, so don't store anything sensitive.
-- RSVP reasons, attendance and stats are visible to everyone with the link.
-- All text from the app is length-capped, stored as plain text (a leading `=`/`+`/`-`/`@` can't become a Sheet formula), and HTML-escaped when shown.
-- Videos must be https YouTube links. They're stored in one canonical form and only ever embedded through youtube-nocookie.
-- `index.html` sets a Content Security Policy (code only from this site and SheetJS, network only to Apps Script, frames only YouTube). SheetJS is pinned with an integrity hash.
-- `.gitignore` keeps local tooling, OS files and clasp credentials (`.clasprc.json`) out of the repo.
+- The browser uses the public anon key. Row-level security lets it **read** public tables only. All **writes** go through `security definer` functions that check every rule, and direct inserts, updates and deletes are refused. Supabase's default grants are revoked in `setup.sql`, and the database tests prove this.
+- Admins sign in with an email magic link. Signing in proves identity only: admin powers come from the `admins` table (`is_admin()`), checked by every admin function. Sign-ups are off, and the sign-in form gives the same answer for unknown emails, so it can't reveal who the admins are.
+- No player logins: anyone with the link can RSVP or send feedback under any player's name. That's the agreed trade-off for a team tool, so don't store anything sensitive. RSVP reasons, attendance and stats are visible to everyone with the link. Feedback and inactive players are admin-only.
+- All text is length-capped by database constraints and HTML-escaped when shown. Videos must be https YouTube links, stored in one canonical form and embedded only through youtube-nocookie.
+- `index.html` sets a Content Security Policy (code only from this site and SheetJS, network only to Supabase, frames only YouTube). SheetJS is pinned with an integrity hash, and supabase-js is self-hosted.
+- `.gitignore` keeps real data (`private-data/`, `sheet-import/`), local tooling and OS files out of the repo.
 
 ## Handing over to a new owner
-1. Sheet: Share → new owner as Editor → ⋯ → **Transfer ownership**.
-2. New owner: Apps Script → **Deploy → New deployment** (Web app, Me, Anyone) → copy the URL.
-3. Update `API_URL` in `js/config.js` (or transfer the GitHub repo).
-4. Archive the old deployment once the new link works, and change `ADMIN_PIN` if needed.
+1. Supabase: **Organization settings → Members → Invite** the new owner, then make them *Owner*.
+2. Add their email to the `admins` table (and invite them under Authentication → Users).
+3. Transfer the GitHub repo (repo **Settings → Transfer ownership**), or add them as a collaborator.
 
 ## Troubleshooting
 | Problem | Fix |
 |---|---|
-| "Couldn't load the team data" | Check `API_URL` is the `/exec` link and access is **Anyone**. |
-| "Missing tab …" | In the Sheet: **Juppies → Set up / repair tabs**. |
+| "Couldn't load the team data" | Check `SUPABASE_URL` and the key in `js/config.js`, and that `setup.sql` has been run. |
+| The sign-in email never arrives | Check spam. Then set up custom SMTP (see *About email delivery* above). |
+| Signed in but "this email isn't an admin" | Add the email, lower-case, to the `admins` table. |
+| The sign-in link opens localhost or the wrong page | Fix **Site URL** and **Redirect URLs** under Authentication → URL Configuration. |
 | A name is missing from the picker | Admin → Players → check they're active. |
 | Dates imported in the wrong year | Set **Season starts in** correctly before Preview, then re-import. |
 | A change on GitHub isn't showing | GitHub Pages caches for up to 10 minutes. Wait, then refresh. |

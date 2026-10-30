@@ -16,9 +16,10 @@
   --accent-soft: #ECECFE;
   --accent-text: #4B4FD8;
 
-  --going: #1F8A55;   --going-soft: #E4F5EC;
-  --not: #D14343;     --not-soft: #FCE9E9;
-  --tbc: #B7770C;     --tbc-soft: #FCF2DE;
+  /* Status colours pass WCAG AA (4.5:1) as text on white, on their soft tint, and behind white text. */
+  --going: #17784A;   --going-soft: #E4F5EC;
+  --not: #B83232;     --not-soft: #FCE9E9;
+  --tbc: #8C5A00;     --tbc-soft: #FCF2DE;
   --gold: #E3A008;
   /* Hero surfaces (next-match art, scoreboard, podium winner). Dark in both themes. */
   --feature-bg: linear-gradient(135deg, #1B1F4B 0%, #2B2F7A 55%, #5B5FEF 130%);

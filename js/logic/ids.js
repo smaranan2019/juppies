@@ -1,6 +1,7 @@
 /**
  * Identifier helpers. Session IDs are readable on purpose, so admins can
- * recognise rows in the Sheet. Keep these in sync with backend/Sessions.gs.
+ * recognise rows in Supabase's Table Editor. The database builds the same ids
+ * (match_id in supabase/setup.sql); tests/database.test.js checks they agree.
  */
 
 const slugify = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -13,7 +14,7 @@ export const oneOffTrainingId = (date, start) => `T-${date.replace(/-/g, '')}-${
 
 /**
  * Extracts the 11-character video id from an https youtube.com / youtu.be link
- * ('' for anything else). Mirrors youTubeId_ in backend/Matches.gs.
+ * ('' for anything else). Mirrors youtube_id in supabase/setup.sql.
  */
 export function youTubeId(url) {
   const text = String(url || '').trim();

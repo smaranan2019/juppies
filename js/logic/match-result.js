@@ -33,7 +33,7 @@ export const ourScoreFrom = (playerGoals, unassigned) => Math.min(MAX_COUNT, pla
  * Player goals may add up to less than our score, because own goals by the
  * opponent count for us without a scorer.
  *
- * The server repeats these checks in validateMatchResult_ (backend/Matches.gs).
+ * The database repeats these checks in match_result_errors (supabase/setup.sql).
  * Keep the two in sync.
  */
 export function validateMatchResult(result, rosterNames) {

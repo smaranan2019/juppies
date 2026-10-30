@@ -9,9 +9,14 @@ export const state = {
   /** Bootstrap payload from the backend, or null while loading. */
   data: null,
   loadError: '',
+  /** When `data` was last fetched successfully. */
+  loadedAt: null,
   view: 'home',
   me: storage.get('me') || '',
-  pin: storage.get('pin') || '',
+  /** Email of the signed-in admin account, if any (admin powers still come from the database). */
+  adminEmail: null,
+  /** Set after a magic link is emailed, so the Admin page can say "check your inbox". */
+  adminLinkSentTo: '',
   /** null | { kind: 'names' } | { kind: 'session', id, editingResult } */
   modal: null,
   /** sessionId -> { status, reason } while the player types a reason. */

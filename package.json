@@ -1,10 +1,16 @@
 {
   "name": "juppies",
   "private": true,
-  "description": "Juppies team hub: RSVPs, match results and player stats, backed by a Google Sheet.",
+  "description": "Juppies team hub: RSVPs, match results and player stats, backed by Supabase.",
   "type": "module",
   "scripts": {
     "start": "python3 -m http.server 8000",
     "test": "node --test"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.10"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

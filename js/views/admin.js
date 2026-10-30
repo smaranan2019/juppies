@@ -1,4 +1,4 @@
-/** The Admin page: PIN unlock, then collapsible tool panels. */
+/** The Admin page: email sign-in, then collapsible tool panels. */
 
 import { html } from '../ui/html.js';
 import { formatDate, formatTime, formatTimestamp, sessionTitle } from '../ui/format.js';
@@ -14,15 +14,34 @@ const panel = (id, title, body, { open = false } = {}) => html`
     <div class="panel__body">${body}</div>
   </details>`;
 
-function lockedView() {
+function signInView(state) {
+  if (state.adminEmail) {
+    return html`
+      ${pageHeader('Admin')}
+      <div class="card form">
+        <p>You're signed in as <b>${state.adminEmail}</b>, but this email isn't an admin.</p>
+        <p class="note">Ask an existing admin to add it to the admins list in Supabase.</p>
+        <button class="btn btn--ghost btn--block" type="button" data-action="sign-out">Sign out</button>
+      </div>`;
+  }
+  if (state.adminLinkSentTo) {
+    return html`
+      ${pageHeader('Check your email')}
+      <div class="card form">
+        <p>If <b>${state.adminLinkSentTo}</b> is an admin email, a sign-in link is on its way.</p>
+        <p class="note">Open it on the phone or computer you want to use. The link works once and expires after an hour.</p>
+        <button class="btn btn--ghost btn--block" type="button" data-action="use-different-email">Use a different email</button>
+      </div>`;
+  }
   return html`
-    ${pageHeader('Admin', 'Enter the admin PIN to manage the schedule, results, players and feedback.')}
-    <form class="card form" data-form="unlock">
+    ${pageHeader('Admin', 'Sign in to manage the schedule, results, players and feedback.')}
+    <form class="card form" data-form="admin-sign-in">
       <label class="field">
-        <span>Admin PIN</span>
-        <input type="password" name="pin" inputmode="numeric" autocomplete="off" required>
+        <span>Admin email</span>
+        <input type="email" name="email" autocomplete="email" inputmode="email" required>
       </label>
-      <button class="btn btn--primary btn--block" type="submit">Unlock</button>
+      <button class="btn btn--primary btn--block" type="submit">Email me a sign-in link</button>
+      <p class="note">No password needed. We'll email you a link that signs you in.</p>
     </form>`;
 }
 
@@ -140,11 +159,11 @@ const exportPanel = () => panel('panel-export', 'Export to Excel', html`
   <button class="btn btn--primary btn--block" type="button" data-action="export">Download Excel</button>`);
 
 export function adminView(state, now = new Date()) {
-  if (!state.data.admin) return lockedView();
+  if (!state.data.admin) return signInView(state);
   return html`
     <div class="page-header page-header--split">
-      ${pageHeader('Admin')}
-      <button class="btn btn--ghost btn--small" type="button" data-action="lock-admin">Lock</button>
+      ${pageHeader('Admin', state.adminEmail && `Signed in as ${state.adminEmail}`)}
+      <button class="btn btn--ghost btn--small" type="button" data-action="sign-out">Sign out</button>
     </div>
     ${resultsPanel(state, now)}
     ${feedbackPanel(state)}

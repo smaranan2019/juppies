@@ -1,6 +1,6 @@
 /**
- * In-memory stand-in for the Apps Script backend, used when API_URL is empty.
- * It mirrors the actions and rules in backend/*.gs so the whole app can be
+ * In-memory stand-in for the database, used when SUPABASE_URL is empty.
+ * It mirrors the functions and rules in supabase/setup.sql so the whole app can be
  * tried with fake data. Nothing is saved between page loads.
  */
 
@@ -10,8 +10,6 @@ import { RSVP_STATUSES, isLocked } from './logic/rsvp.js';
 import { validateMatchResult } from './logic/match-result.js';
 import { parseSchedule } from './logic/schedule-import.js';
 import { DEMO_RESULTS, DEMO_SCHEDULE_ROWS, DEMO_SEASON } from './demo-schedule.js';
-
-export const DEMO_PIN = '1234';
 
 const ADMIN_ACTIONS = new Set([
   'addPlayer', 'setPlayerActive', 'setSessionStatus', 'addSession', 'importMatches',
@@ -101,7 +99,6 @@ export function createDemoBackend() {
       if (isAdmin) out.feedback = db.feedback;
       return out;
     },
-    checkPin: (body, isAdmin) => ({ admin: isAdmin }),
     rsvp({ sessionId, player, status, reason }) {
       if (!RSVP_STATUSES.includes(status)) throw new Error('Status must be Going, Not going or TBC');
       const session = findSession(sessionId);
@@ -188,9 +185,9 @@ export function createDemoBackend() {
   };
 
   return {
-    handle(body) {
-      const isAdmin = body.pin === DEMO_PIN;
-      if (ADMIN_ACTIONS.has(body.action) && !isAdmin) throw new Error('Wrong admin PIN');
+    /** `isAdmin` comes from the demo sign-in (any email); see js/auth.js. */
+    handle(body, { isAdmin }) {
+      if (ADMIN_ACTIONS.has(body.action) && !isAdmin) throw new Error('Admins only. Sign in with an admin email first.');
       const action = actions[body.action];
       if (!action) throw new Error(`Unknown action: ${body.action}`);
       return clone({ ok: true, ...(action(body, isAdmin) || { saved: true }) });

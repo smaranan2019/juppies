@@ -1,6 +1,6 @@
 /**
- * Excel import/export for admins. Uses SheetJS, loaded as the global `XLSX`
- * from a CDN script tag in index.html.
+ * Excel import/export for admins. SheetJS (~950 KB) is only downloaded the
+ * first time an admin imports or exports, not on every visit.
  */
 
 import { todaySG } from '../logic/dates.js';
@@ -12,14 +12,38 @@ const DAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRID
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const RSVP_WORD = { Going: 'Yes', 'Not going': 'No', TBC: 'TBC' };
 
-function requireSheetJs() {
-  if (!window.XLSX) throw new Error('Excel tools are still loading. Try again in a second.');
-  return window.XLSX;
+/*
+ * 0.20.3 from SheetJS's own CDN (the npm/cdnjs builds stop at 0.18.5, which has
+ * known vulnerabilities). The integrity hash pins the exact file; index.html's
+ * Content Security Policy allows this host.
+ */
+const SHEETJS_URL = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+const SHEETJS_INTEGRITY = 'sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT';
+
+let sheetJsLoading = null;
+
+/** Resolves with the global `XLSX`, adding its script tag on first use. */
+function loadSheetJs() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  sheetJsLoading ??= new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = SHEETJS_URL;
+    script.integrity = SHEETJS_INTEGRITY;
+    script.crossOrigin = 'anonymous';
+    script.onload = () => resolve(window.XLSX);
+    script.onerror = () => {
+      sheetJsLoading = null; // allow a retry
+      script.remove();
+      reject(new Error("Couldn't load the Excel tools. Check your connection and try again."));
+    };
+    document.head.appendChild(script);
+  });
+  return sheetJsLoading;
 }
 
 /** Reads an uploaded schedule and returns the first sheet that parses into matches. */
 export async function readScheduleFile(file, seasonStartYear) {
-  const XLSX = requireSheetJs();
+  const XLSX = await loadSheetJs();
   const workbook = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', cellDates: true });
   let fallback = null;
   for (const name of workbook.SheetNames) {
@@ -54,8 +78,8 @@ function attendanceSheet(data, type) {
   return rows;
 }
 
-export function exportWorkbook(data) {
-  const XLSX = requireSheetJs();
+export async function exportWorkbook(data) {
+  const XLSX = await loadSheetJs();
   const workbook = XLSX.utils.book_new();
   const addSheet = (rows, name, firstColWidth = 16) => {
     const sheet = XLSX.utils.aoa_to_sheet(rows);

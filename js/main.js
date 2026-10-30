@@ -5,8 +5,10 @@ import { render } from './render.js';
 import { load } from './controller.js';
 import { changeActions, clickActions, formActions, inputActions } from './actions.js';
 import { initTheme } from './ui/theme.js';
+import { auth } from './auth.js';
 
 subscribe(render);
+auth.onChange(() => load());
 initTheme(document.querySelector('#theme-button'));
 
 document.addEventListener('click', (event) => {

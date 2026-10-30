@@ -5,7 +5,7 @@
  * case, stray spaces, a 19th column) so the demo exercises the real parser,
  * and tests/schedule-import.test.js checks it parses cleanly.
  *
- * The real roster and RSVPs live only in the Google Sheet. Never commit them.
+ * The real roster and RSVPs live only in the database. Never commit them.
  */
 
 export const DEMO_SEASON = 2026;

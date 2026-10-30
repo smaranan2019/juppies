@@ -6,7 +6,6 @@
 import { html } from './ui/html.js';
 import { icons } from './ui/icons.js';
 import { isDemo } from './api.js';
-import { DEMO_PIN } from './demo-backend.js';
 import { sessionById } from './logic/selectors.js';
 import { homeView } from './views/home.js';
 import { sessionsView } from './views/sessions.js';
@@ -28,6 +27,8 @@ const TABS = [
 
 /** The page currently on screen, so entrance effects run only on navigation. */
 let renderedView = null;
+/** Where keyboard focus was before the sheet opened, so closing it can put focus back. */
+let focusBeforeModal = null;
 
 const el = {
   app: document.querySelector('#app'),
@@ -54,10 +55,18 @@ const errorView = (message) => html`
     <button class="btn btn--primary" type="button" data-action="retry">Try again</button>
   </div>`;
 
+/** Shown when a refresh failed but older data is still on screen, so it's never mistaken for current. */
+const staleBanner = (state) => html`
+  <div class="stale-banner" role="alert">
+    <span>Couldn't refresh. Showing data from ${state.loadedAt.toLocaleTimeString('en-SG', { hour: 'numeric', minute: '2-digit' })}.</span>
+    <button type="button" class="link" data-action="retry">Try again</button>
+  </div>`;
+
 function pageView(state) {
   const tab = TABS.find((t) => t.view === state.view) ?? TABS[0];
   return html`
-    ${isDemo && html`<div class="demo-banner">Demo mode: real fixtures and results, made-up players and trainings. Nothing is saved. Admin PIN is ${DEMO_PIN}.</div>`}
+    ${state.loadError && state.loadedAt && staleBanner(state)}
+    ${isDemo && html`<div class="demo-banner">Demo mode: real fixtures and results, made-up players and trainings. Nothing is saved. Admin: sign in with any email.</div>`}
     ${tab.render(state)}`;
 }
 
@@ -74,7 +83,7 @@ function modalView(state) {
   }
   return html`
     <div class="overlay" data-action="close-modal-backdrop">
-      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">${body}</div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">${body}</div>
     </div>`;
 }
 
@@ -115,8 +124,15 @@ export function render(state) {
     el.modal.innerHTML = modal ? String(modal) : '';
   });
   if (modal && !wasOpen) {
-    el.modal.querySelector('.sheet').classList.add('is-entering');
+    const sheet = el.modal.querySelector('.sheet');
+    sheet.classList.add('is-entering');
     playEntrance(el.modal);
+    // Move keyboard and screen-reader focus into the sheet that just opened.
+    focusBeforeModal = document.activeElement;
+    sheet.focus({ preventScroll: true });
+  } else if (!modal && wasOpen) {
+    focusBeforeModal?.focus?.({ preventScroll: true });
+    focusBeforeModal = null;
   }
   document.body.classList.toggle('has-modal', Boolean(modal));
 }

@@ -9,7 +9,7 @@
 
 import { state, setState } from './store.js';
 import { storage } from './storage.js';
-import { load, lockAdmin, runAction, unlockAdmin } from './controller.js';
+import { load, runAction, sendAdminLink, signOutAdmin } from './controller.js';
 import { toast } from './ui/toast.js';
 import { escapeHtml } from './ui/html.js';
 import { unassignedHint } from './ui/format.js';
@@ -93,7 +93,10 @@ export const clickActions = {
     const type = el.dataset.type;
     setState({ showPast: { ...state.showPast, [type]: !state.showPast[type] } });
   },
-  'lock-admin': lockAdmin,
+  'sign-out': signOutAdmin,
+  'use-different-email'() {
+    setState({ adminLinkSentTo: '' });
+  },
   'feedback-filter'(el) {
     setState({ feedbackFilter: el.dataset.filter });
   },
@@ -134,9 +137,9 @@ export const clickActions = {
     const response = await runAction('clearMatchResult', { sessionId: openSessionId() }, 'Result deleted');
     if (response) setState({ modal: { ...state.modal, editingResult: false } });
   },
-  export() {
+  async export() {
     try {
-      exportWorkbook(state.data);
+      await exportWorkbook(state.data);
     } catch (error) {
       toast(error.message, { error: true });
     }
@@ -162,8 +165,8 @@ export const formActions = {
       name: anonymous ? '' : state.me,
     }, 'Thanks! Sent to the admins.');
   },
-  unlock(form, formData) {
-    unlockAdmin(formData.get('pin').trim());
+  'admin-sign-in'(form, formData) {
+    sendAdminLink(formData.get('email').trim().toLowerCase());
   },
   async 'import-preview'(form, formData) {
     const seasonYear = Number(formData.get('seasonYear')) || new Date().getFullYear();
