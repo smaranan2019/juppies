@@ -13,6 +13,9 @@ let demoEmail = null;
 /** Supabase's answer when an email has no account (we never create accounts from the app). */
 const isUnknownEmail = (error) => /signups not allowed|user not found/i.test(error.message);
 
+/** Supabase limits how many sign-in emails a project can send per hour (and per address per minute). */
+const isRateLimited = (error) => error.status === 429 || /rate limit|security purposes/i.test(error.message);
+
 export const auth = {
   /** The signed-in email, or null. */
   async currentEmail() {
@@ -35,6 +38,9 @@ export const auth = {
       email,
       options: { shouldCreateUser: false, emailRedirectTo: `${location.origin}${location.pathname}` },
     });
+    if (error && isRateLimited(error)) {
+      throw new Error('Too many sign-in emails have been sent recently. Wait a while, then try again (use the newest email).');
+    }
     if (error && !isUnknownEmail(error)) throw error;
     return { signedInNow: false };
   },
