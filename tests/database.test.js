@@ -218,6 +218,12 @@ test('SQL id helpers match the browser versions', async () => {
   }
 });
 
+test('every update and delete has a WHERE clause, which Supabase requires for API calls', () => {
+  const statements = SETUP_SQL.split(';').map((s) => s.trim()).filter((s) => /^(update|delete)\b/i.test(s));
+  assert.ok(statements.length > 0);
+  for (const statement of statements) assert.match(statement, /\bwhere\b/i, statement);
+});
+
 test('every function the browser calls exists with matching parameters', async () => {
   const { rows } = await db.query(`
     select p.proname as name, coalesce(p.proargnames, '{}') as args

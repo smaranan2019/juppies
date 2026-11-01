@@ -393,7 +393,7 @@ begin
   if length(coalesce(p_pin, '')) < 6 then raise exception 'The PIN must be at least 6 characters'; end if;
   insert into admin_pin (pin_hash) values (extensions.crypt(p_pin, extensions.gen_salt('bf', 10)))
   on conflict (id) do update set pin_hash = excluded.pin_hash, failed_attempts = 0, locked_until = null;
-  delete from admin_sessions;
+  delete from admin_sessions where true;
 end;
 $$;
 
@@ -418,11 +418,12 @@ begin
   if extensions.crypt(coalesce(p_pin, ''), current_pin.pin_hash) <> current_pin.pin_hash then
     update admin_pin set
       failed_attempts = case when failed_attempts >= 4 then 0 else failed_attempts + 1 end,
-      locked_until = case when failed_attempts >= 4 then now() + interval '15 minutes' end;
+      locked_until = case when failed_attempts >= 4 then now() + interval '15 minutes' end
+    where id;
     return jsonb_build_object('error', 'Wrong PIN.');
   end if;
 
-  update admin_pin set failed_attempts = 0, locked_until = null;
+  update admin_pin set failed_attempts = 0, locked_until = null where id;
   delete from admin_sessions where expires_at <= now();
   insert into admin_sessions (token_hash, expires_at)
   values (sha256(convert_to(new_token, 'UTF8')), now() + interval '30 days');
