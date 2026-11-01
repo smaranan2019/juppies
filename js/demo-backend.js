@@ -88,6 +88,10 @@ export function createDemoBackend() {
   const rosterHas = (name) => db.players.some((p) => p.name.toLowerCase() === name.toLowerCase());
 
   const actions = {
+    adminSignIn() {
+      return { token: 'demo' };
+    },
+    adminSignOut() {},
     bootstrap(body, isAdmin) {
       const out = {
         admin: isAdmin,
@@ -185,9 +189,9 @@ export function createDemoBackend() {
   };
 
   return {
-    /** `isAdmin` comes from the demo sign-in (any email); see js/auth.js. */
+    /** `isAdmin` comes from the demo sign-in (any PIN). */
     handle(body, { isAdmin }) {
-      if (ADMIN_ACTIONS.has(body.action) && !isAdmin) throw new Error('Admins only. Sign in with an admin email first.');
+      if (ADMIN_ACTIONS.has(body.action) && !isAdmin) throw new Error('Admins only. Sign in with the admin PIN first.');
       const action = actions[body.action];
       if (!action) throw new Error(`Unknown action: ${body.action}`);
       return clone({ ok: true, ...(action(body, isAdmin) || { saved: true }) });

@@ -66,7 +66,7 @@ function pageView(state) {
   const tab = TABS.find((t) => t.view === state.view) ?? TABS[0];
   return html`
     ${state.loadError && state.loadedAt && staleBanner(state)}
-    ${isDemo && html`<div class="demo-banner">Demo mode: real fixtures and results, made-up players and trainings. Nothing is saved. Admin: sign in with any email.</div>`}
+    ${isDemo && html`<div class="demo-banner">Demo mode: real fixtures and results, made-up players and trainings. Nothing is saved. Admin: sign in with any PIN.</div>`}
     ${tab.render(state)}`;
 }
 

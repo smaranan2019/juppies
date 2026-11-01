@@ -9,7 +9,7 @@
 
 import { state, setState } from './store.js';
 import { storage } from './storage.js';
-import { load, runAction, sendAdminLink, signOutAdmin } from './controller.js';
+import { load, runAction, signInAdmin, signOutAdmin } from './controller.js';
 import { toast } from './ui/toast.js';
 import { escapeHtml } from './ui/html.js';
 import { unassignedHint } from './ui/format.js';
@@ -94,9 +94,6 @@ export const clickActions = {
     setState({ showPast: { ...state.showPast, [type]: !state.showPast[type] } });
   },
   'sign-out': signOutAdmin,
-  'use-different-email'() {
-    setState({ adminLinkSentTo: '' });
-  },
   'feedback-filter'(el) {
     setState({ feedbackFilter: el.dataset.filter });
   },
@@ -166,7 +163,7 @@ export const formActions = {
     }, 'Thanks! Sent to the admins.');
   },
   'admin-sign-in'(form, formData) {
-    sendAdminLink(formData.get('email').trim().toLowerCase());
+    signInAdmin(formData.get('pin'));
   },
   async 'import-preview'(form, formData) {
     const seasonYear = Number(formData.get('seasonYear')) || new Date().getFullYear();

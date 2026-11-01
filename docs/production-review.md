@@ -25,8 +25,8 @@ Fixed in earlier passes and re-checked now: XSS (auto-escaping templates), the C
 
 | Layer | Status |
 |---|---|
-| **Database** (`supabase/setup.sql`) | Deny by default: browsers can only read public tables, and all writes go through functions that check the rules. Admin powers come from the `admins` table. Tested in real Postgres, including Supabase's permissive default grants |
-| **Data** (`api.js`, `auth.js`) | One client, one path for every call, timeouts, and friendly errors. `RPC_CALLS` is tested against the real function signatures |
+| **Database** (`supabase/setup.sql`) | Deny by default: browsers can only read public tables, and all writes go through functions that check the rules. Admin powers come from a database-checked PIN, with a lock after repeated wrong guesses. Tested in real Postgres, including Supabase's permissive default grants |
+| **Data** (`api.js`) | One client, one path for every call, timeouts, and friendly errors. `RPC_CALLS` is tested against the real function signatures |
 | **State** (`store.js`, `controller.js`) | One source of truth. Stale data is labelled, and racing loads are prevented |
 | **UI** (`render.js`, `views/`) | Pure views with escaped output. Distinct loading, error, stale, empty and demo states. Motion respects reduced-motion settings |
 | **Rules** (`logic/`) | Pure and unit-tested. Mirrored in SQL where the server must enforce them |
@@ -44,7 +44,7 @@ Fixed in earlier passes and re-checked now: XSS (auto-escaping templates), the C
 | 1 | **Anyone with the link can read team data and RSVP as anyone** | Names and absence reasons ("injured") are effectively public | A team code checked by the database: reads and writes require it, and direct table reads are switched off. About half a day |
 | 2 | **Supabase free projects pause after about a week without activity** | The app would stop loading, e.g. over the off-season break | Open the app weekly, or upgrade to the Pro plan before long breaks |
 | 3 | **Backups** | The free plan's backups are limited | Export regularly (Admin → Export to Excel), or schedule a `pg_dump` |
-| 4 | Sign-in emails may not reach every admin | Supabase's built-in sender is limited | Set up custom SMTP (README, *About email delivery*) |
+| 4 | Admins share one PIN | Changes can't be traced to a person, and a leaked PIN gives full admin access until it's changed | Change the PIN when an admin leaves. Move to individual logins if this becomes a problem |
 | 5 | Focus can leave the open sheet with Tab | Minor keyboard accessibility gap (focus moves in, but isn't trapped) | Add a focus trap to the dialog |
 | 6 | Missing illustrations cause three 404 requests per page load | Harmless, but noisy in the console and wasted requests | Add the three `assets/*.webp` files (prompts in `assets/README.md`) |
 | 7 | The bootstrap payload grows every season | Slower loads after several seasons | Return only the selected season, plus a stats summary |
@@ -56,4 +56,4 @@ Deliberately out of scope: translation and other locales (an English-speaking te
 
 ## Action needed in Supabase
 
-`supabase/setup.sql` changed (the feedback limit). Paste it into **SQL Editor → Run** again. It's safe to re-run and won't touch your data.
+`supabase/setup.sql` changed (the feedback limit and PIN sign-in). Paste it into **SQL Editor → Run** again, then set the PIN with `select set_admin_pin('your-pin-here');`. It's safe to re-run: it keeps team data and removes only the old `admins` email list.

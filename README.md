@@ -1,7 +1,7 @@
 # Juppies
 
 A team hub for the NUS Jupitans: training and match RSVPs, match results, player stats and match videos.
-Players pick their name once (no logins). Admins sign in with an email link.
+Players pick their name once (no logins). Admins sign in with a shared PIN.
 
 **Everyone can see** the schedule, who's coming, results, scorers, assists, the player of the match, the season leaderboard and attendance.
 **Only admins can change** things: the schedule, results, stats, players and videos. Only admins can read the feedback inbox.
@@ -12,7 +12,7 @@ Players pick their name once (no logins). Admins sign in with an email link.
 | `supabase/setup.sql` | Tables, security rules and the functions the app calls | Nobody after setup |
 | `index.html`, `css/`, `js/`, `logo.png` (GitHub Pages) | The app players open on their phones | Nobody after setup |
 
-Try it with `npm start` and open <http://localhost:8000>. With no Supabase project configured (empty `SUPABASE_URL`), it runs in **demo mode**: the real 2026/27 fixtures, results and streams, with made-up players and trainings. In demo mode any email signs you in as admin.
+Try it with `npm start` and open <http://localhost:8000>. With no Supabase project configured (empty `SUPABASE_URL`), it runs in **demo mode**: the real 2026/27 fixtures, results and streams, with made-up players and trainings. In demo mode any PIN signs you in as admin.
 
 ---
 
@@ -20,7 +20,7 @@ Try it with `npm start` and open <http://localhost:8000>. With no Supabase proje
 
 | Task | Where |
 |---|---|
-| **Sign in** | Admin → type your email → open the link we email you |
+| **Sign in** | Admin → type the admin PIN. The device stays signed in for 30 days |
 | **Enter a match result** | Admin → *Match results* lists finished matches without a score. Open one → **Enter result** → tick who played, add goals and assists (the score adds itself up), pick the player of the match → **Save result** |
 | Fix a result | Open the match (Matches → Results, or Stats → Results) → **Edit**. **Delete result** removes it |
 | Upload or update the schedule | Admin → *Upload match schedule*. Re-uploading updates times and never overwrites RSVPs players gave in the app |
@@ -40,7 +40,6 @@ The Table Editor works like a spreadsheet. It's fine to correct a typo or change
 | Table | One row per | Notes |
 |---|---|---|
 | `settings` | (one row) | `training_lock_hours` / `match_lock_hours`: RSVP cutoff (2 and 12). `weeks_ahead`: how far ahead trainings appear (3). `training_start`: first date trainings are created from. `match_venue`: shown on every match |
-| `admins` | admin email | **Add or remove admins here** (lower-case emails) |
 | `players` | player | `active` false hides them from the name list |
 | `training_slots` | weekly training | `weekday` 0 = Sunday … 6 = Saturday. New times apply to sessions created from then on |
 | `sessions` | training or match | `status` is Active/Cancelled |
@@ -59,13 +58,14 @@ The Table Editor works like a spreadsheet. It's fine to correct a typo or change
 2. Open **SQL Editor → New query**, paste all of [`supabase/setup.sql`](supabase/setup.sql), click **Run**. You should see "Success. No rows returned".
 3. To load the team's real data, run `private-data/real-data.sql` the same way. That file is kept out of git on purpose because it holds real names.
 
-### 2. Set up admin sign-in
-1. **Authentication → Sign In / Providers**: keep **Email** on, and turn **off** *Allow new users to sign up*. Admins are added by you, never by strangers.
-2. **Authentication → URL Configuration**: set **Site URL** to your GitHub Pages address (e.g. `https://smaranan2019.github.io/juppies/`). Under **Redirect URLs** add that address and `http://localhost:8000/`.
-3. **Authentication → Users → Add user → Send invitation** for each admin's email.
-4. **Table Editor → admins → Insert row** with the same email, all lower-case.
+### 2. Set the admin PIN
+In **SQL Editor → New query**, run this with your own PIN (at least 6 characters; longer is safer):
 
-**About email delivery:** Supabase's built-in email sender is meant for getting started. It has a low hourly limit and may only deliver to members of your Supabase team. If an admin doesn't receive their link, set up your own sender under **Authentication → Emails → SMTP Settings** (a free account at an email service such as Resend or Brevo works).
+```sql
+select set_admin_pin('your-pin-here');
+```
+
+Share the PIN only with admins. Run the same line again to change it, which also signs out every device. Do this whenever an admin leaves.
 
 ### 3. Connect the app
 1. In Supabase, go to **Project Settings → API** (or **API Keys**) and copy the **Project URL** and the **anon public** key (newer projects call it the *publishable* key).
@@ -94,7 +94,6 @@ js/render.js            state -> DOM (tabs, page, bottom sheet)
 js/actions.js           click / submit / change / input handlers
 js/controller.js        load data, run actions, admin sign-in
 js/api.js               action -> database function (RPC_CALLS), or the demo backend
-js/auth.js              email magic-link sign-in
 js/supabase-client.js   the shared Supabase client
 js/vendor/supabase.js   supabase-js 2.117.3, self-hosted
 js/demo-backend.js      in-memory backend mirroring supabase/setup.sql
@@ -124,7 +123,7 @@ npm start    # serves the app on http://localhost:8000 (ES modules don't load fr
 
 **Security model**
 - The browser uses the public anon key. Row-level security lets it **read** public tables only. All **writes** go through `security definer` functions that check every rule, and direct inserts, updates and deletes are refused. Supabase's default grants are revoked in `setup.sql`, and the database tests prove this.
-- Admins sign in with an email magic link. Signing in proves identity only: admin powers come from the `admins` table (`is_admin()`), checked by every admin function. Sign-ups are off, and the sign-in form gives the same answer for unknown emails, so it can't reveal who the admins are.
+- Admins share one PIN, checked only by the database and stored as a bcrypt hash. A correct PIN returns a session token (30 days, stored hashed) that the app sends in the `x-admin-token` header, and every admin function checks it through `is_admin()`. Five wrong PINs in a row lock sign-in for 15 minutes. The trade-off: the app can't tell which admin made a change, and removing an admin means changing the PIN.
 - No player logins: anyone with the link can RSVP or send feedback under any player's name. That's the agreed trade-off for a team tool, so don't store anything sensitive. RSVP reasons, attendance and stats are visible to everyone with the link. Feedback and inactive players are admin-only.
 - All text is length-capped by database constraints and HTML-escaped when shown. Videos must be https YouTube links, stored in one canonical form and embedded only through youtube-nocookie.
 - `index.html` sets a Content Security Policy (code only from this site and SheetJS, network only to Supabase, frames only YouTube). SheetJS is pinned with an integrity hash, and supabase-js is self-hosted.
@@ -132,16 +131,16 @@ npm start    # serves the app on http://localhost:8000 (ES modules don't load fr
 
 ## Handing over to a new owner
 1. Supabase: **Organization settings → Members → Invite** the new owner, then make them *Owner*.
-2. Add their email to the `admins` table (and invite them under Authentication → Users).
+2. Give them the admin PIN.
 3. Transfer the GitHub repo (repo **Settings → Transfer ownership**), or add them as a collaborator.
 
 ## Troubleshooting
 | Problem | Fix |
 |---|---|
 | "Couldn't load the team data" | Check `SUPABASE_URL` and the key in `js/config.js`, and that `setup.sql` has been run. |
-| The sign-in email never arrives | Check spam. Then set up custom SMTP (see *About email delivery* above). |
-| Signed in but "this email isn't an admin" | Add the email, lower-case, to the `admins` table. |
-| The sign-in link opens localhost or the wrong page | Fix **Site URL** and **Redirect URLs** under Authentication → URL Configuration. |
+| "No admin PIN has been set yet" | Run `select set_admin_pin('your-pin-here');` in the SQL Editor. |
+| Forgot the PIN | Run the same line with a new PIN. The old one can't be recovered. |
+| "Too many wrong PINs" | Wait 15 minutes. Devices already signed in keep working. |
 | A name is missing from the picker | Admin → Players → check they're active. |
 | Dates imported in the wrong year | Set **Season starts in** correctly before Preview, then re-import. |
 | A change on GitHub isn't showing | GitHub Pages caches for up to 10 minutes. Wait, then refresh. |

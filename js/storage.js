@@ -1,5 +1,5 @@
 /**
- * localStorage wrapper for per-device preferences (chosen name, admin PIN, theme).
+ * localStorage wrapper for per-device preferences (chosen name, admin session, theme).
  * Storage can be unavailable (private mode, blocked cookies), so every access
  * is guarded and the app simply forgets the preference in that case.
  */

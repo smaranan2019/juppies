@@ -8,7 +8,7 @@
  */
 
 import { isDemo, supabaseClient } from './supabase-client.js';
-import { auth } from './auth.js';
+import { storage } from './storage.js';
 import { createDemoBackend } from './demo-backend.js';
 
 /**
@@ -17,6 +17,8 @@ import { createDemoBackend } from './demo-backend.js';
  */
 export const RPC_CALLS = {
   bootstrap: () => ['bootstrap', {}],
+  adminSignIn: (p) => ['admin_sign_in', { p_pin: p.pin }],
+  adminSignOut: () => ['admin_sign_out', {}],
   rsvp: (p) => ['submit_rsvp', { p_session_id: p.sessionId, p_player: p.player, p_status: p.status, p_reason: p.reason ?? '' }],
   feedback: (p) => ['submit_feedback', { p_message: p.message, p_session_id: p.sessionId ?? '', p_name: p.anonymous ? '' : p.name ?? '' }],
   addPlayer: (p) => ['add_player', { p_name: p.name }],
@@ -43,7 +45,7 @@ const REQUEST_TIMEOUT_MS = 20_000;
 
 /** Turns database and network errors into something a player can act on. */
 function friendlyMessage(error) {
-  if (/permission denied for function/i.test(error.message)) return 'Admins only. Sign in with an admin email first.';
+  if (/permission denied for function/i.test(error.message)) return 'Admins only. Sign in with the admin PIN first.';
   if (/abort|timed? ?out/i.test(error.message)) return 'The server took too long to answer. Check your connection and try again.';
   if (/failed to fetch|network/i.test(error.message)) return "Couldn't reach the server. Check your connection and try again.";
   return error.message || 'Something went wrong';
@@ -55,11 +57,14 @@ export async function callApi(action, payload = {}) {
 
   if (demoBackend) {
     await new Promise((resolve) => setTimeout(resolve, DEMO_LATENCY_MS));
-    return demoBackend.handle({ action, ...payload }, { isAdmin: Boolean(await auth.currentEmail()) });
+    return demoBackend.handle({ action, ...payload }, { isAdmin: Boolean(storage.get('admin_token')) });
   }
 
   const [fn, params] = toRpc(payload);
-  const { data, error } = await supabaseClient().rpc(fn, params).abortSignal(AbortSignal.timeout(REQUEST_TIMEOUT_MS));
+  const request = supabaseClient().rpc(fn, params).abortSignal(AbortSignal.timeout(REQUEST_TIMEOUT_MS));
+  const adminToken = storage.get('admin_token');
+  if (adminToken) request.setHeader('x-admin-token', adminToken);
+  const { data, error } = await request;
   if (error) throw new Error(friendlyMessage(error));
   return data !== null && typeof data === 'object' ? data : { value: data };
 }

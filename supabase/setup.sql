@@ -2,17 +2,22 @@
 -- Juppies database: tables, security rules and the functions the app calls.
 --
 -- Paste this whole file into Supabase → SQL Editor → Run.
--- It is safe to run again after an update: nothing here deletes data.
+-- It is safe to run again after an update: nothing here deletes team data.
 --
 -- Security model
 --   * Browsers use the public "anon" key. They can READ the team's public data
 --     and can only WRITE by calling the functions in this file, which check
 --     every rule. Direct inserts/updates/deletes are refused.
---   * Admins sign in with an email magic link. Only emails listed in the
---     `admins` table get admin powers (see is_admin()).
+--   * Admins sign in with a shared PIN, which only the database can check. A
+--     correct PIN returns a session token that the app sends with each request
+--     (see is_admin()). Set or change the PIN with set_admin_pin() below.
 --   * Rules mirrored in the browser (for instant feedback) say so in comments;
 --     this file is the source of truth.
 -- =============================================================================
+
+
+-- Supabase keeps extensions in their own schema; bcrypt comes from pgcrypto.
+create extension if not exists pgcrypto schema extensions;
 
 
 -- ----------------------------------------------------------------------------
@@ -29,9 +34,21 @@ create table if not exists public.settings (
 );
 insert into public.settings default values on conflict do nothing;
 
--- Emails allowed to use admin tools. Manage in Table Editor (lower-case emails).
-create table if not exists public.admins (
-  email text primary key check (email = lower(email))
+-- Left over from email sign-in.
+drop table if exists public.admins;
+
+-- The shared admin PIN (bcrypt hash only) and the lock on repeated wrong guesses.
+create table if not exists public.admin_pin (
+  id boolean primary key default true check (id),  -- exactly one row
+  pin_hash text not null,
+  failed_attempts int not null default 0,
+  locked_until timestamptz
+);
+
+-- Signed-in admin devices. Only token hashes are stored, so a leak can't sign anyone in.
+create table if not exists public.admin_sessions (
+  token_hash bytea primary key,
+  expires_at timestamptz not null
 );
 
 create table if not exists public.players (
@@ -113,12 +130,18 @@ create table if not exists public.player_stats (
 -- Helpers (internal: not callable from the browser, see Grants)
 -- ----------------------------------------------------------------------------
 
+-- Hash of the session token sent in this request's x-admin-token header.
+create or replace function public.admin_token_hash() returns bytea
+language sql stable as $$
+  select sha256(convert_to(coalesce(
+    nullif(current_setting('request.headers', true), '')::jsonb ->> 'x-admin-token', ''), 'UTF8'));
+$$;
+
 create or replace function public.is_admin() returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
-    select 1 from admins
-    where email = lower(coalesce(auth.jwt() ->> 'email', ''))
-      and coalesce(auth.jwt() ->> 'role', '') = 'authenticated'
+    select 1 from admin_sessions
+    where token_hash = admin_token_hash() and expires_at > now()
   );
 $$;
 
@@ -126,7 +149,7 @@ create or replace function public.require_admin() returns void
 language plpgsql stable security definer set search_path = public as $$
 begin
   if not is_admin() then
-    raise exception 'Admins only. Sign in with an admin email first.' using errcode = '42501';
+    raise exception 'Admins only. Sign in with the admin PIN first.' using errcode = '42501';
   end if;
 end;
 $$;
@@ -357,6 +380,65 @@ $$;
 
 
 -- ----------------------------------------------------------------------------
+-- Admin sign-in
+-- ----------------------------------------------------------------------------
+
+/*
+ * Sets or changes the PIN and signs out every device. Not callable from the
+ * browser: run it in the SQL Editor, e.g. select set_admin_pin('your-new-pin');
+ */
+create or replace function public.set_admin_pin(p_pin text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if length(coalesce(p_pin, '')) < 6 then raise exception 'The PIN must be at least 6 characters'; end if;
+  insert into admin_pin (pin_hash) values (extensions.crypt(p_pin, extensions.gen_salt('bf', 10)))
+  on conflict (id) do update set pin_hash = excluded.pin_hash, failed_attempts = 0, locked_until = null;
+  delete from admin_sessions;
+end;
+$$;
+
+/*
+ * Returns { token } or { error }. A wrong PIN returns rather than raises,
+ * because raising would roll back the failed-attempt count. Five wrong PINs in
+ * a row lock sign-in for everyone for 15 minutes, so a PIN can't be guessed by
+ * a script. Sessions already signed in keep working during a lock.
+ */
+create or replace function public.admin_sign_in(p_pin text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  current_pin admin_pin;
+  new_token text := gen_random_uuid()::text;
+begin
+  select * into current_pin from admin_pin for update;  -- parallel guesses wait their turn
+  if not found then return jsonb_build_object('error', 'No admin PIN has been set yet.'); end if;
+  if current_pin.locked_until > now() then
+    return jsonb_build_object('error', 'Too many wrong PINs. Try again in 15 minutes.');
+  end if;
+
+  if extensions.crypt(coalesce(p_pin, ''), current_pin.pin_hash) <> current_pin.pin_hash then
+    update admin_pin set
+      failed_attempts = case when failed_attempts >= 4 then 0 else failed_attempts + 1 end,
+      locked_until = case when failed_attempts >= 4 then now() + interval '15 minutes' end;
+    return jsonb_build_object('error', 'Wrong PIN.');
+  end if;
+
+  update admin_pin set failed_attempts = 0, locked_until = null;
+  delete from admin_sessions where expires_at <= now();
+  insert into admin_sessions (token_hash, expires_at)
+  values (sha256(convert_to(new_token, 'UTF8')), now() + interval '30 days');
+  return jsonb_build_object('token', new_token);
+end;
+$$;
+
+create or replace function public.admin_sign_out() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from admin_sessions where token_hash = admin_token_hash();
+end;
+$$;
+
+
+-- ----------------------------------------------------------------------------
 -- Admin functions: each starts with require_admin()
 -- ----------------------------------------------------------------------------
 
@@ -557,7 +639,8 @@ $$;
 -- ----------------------------------------------------------------------------
 
 alter table public.settings enable row level security;
-alter table public.admins enable row level security;
+alter table public.admin_pin enable row level security;
+alter table public.admin_sessions enable row level security;
 alter table public.players enable row level security;
 alter table public.training_slots enable row level security;
 alter table public.sessions enable row level security;
@@ -570,8 +653,7 @@ alter table public.player_stats enable row level security;
 -- Browsers may only read, and only these tables. All writes go through the functions above.
 revoke all on all tables in schema public from anon, authenticated;
 grant select on public.settings, public.players, public.training_slots, public.sessions, public.rsvps,
-  public.videos, public.match_results, public.player_stats to anon, authenticated;
-grant select on public.feedback to authenticated;
+  public.videos, public.match_results, public.player_stats, public.feedback to anon, authenticated;
 
 drop policy if exists "Anyone can read" on public.settings;
 create policy "Anyone can read" on public.settings for select using (true);
@@ -590,18 +672,18 @@ create policy "Anyone can read" on public.match_results for select using (true);
 drop policy if exists "Anyone can read" on public.player_stats;
 create policy "Anyone can read" on public.player_stats for select using (true);
 drop policy if exists "Admins can read" on public.feedback;
-create policy "Admins can read" on public.feedback for select to authenticated using (public.is_admin());
--- admins: no policies, so nobody can read it through the API.
+create policy "Admins can read" on public.feedback for select using (public.is_admin());
+-- admin_pin, admin_sessions: no grants or policies, so nobody can read them through the API.
 
 -- Functions: nothing is callable unless granted below.
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function
   public.bootstrap(), public.ensure_trainings(), public.is_admin(),
-  public.submit_rsvp(text, text, text, text), public.submit_feedback(text, text, text)
-  to anon, authenticated;
-grant execute on function
+  public.submit_rsvp(text, text, text, text), public.submit_feedback(text, text, text),
+  public.admin_sign_in(text), public.admin_sign_out(),
+  -- Admin functions check the session themselves, through require_admin().
   public.add_player(text), public.set_player_active(text, boolean), public.set_session_status(text, text),
   public.add_session(text, text, text, text, text, text), public.import_matches(jsonb, boolean),
   public.add_video(text, text, text), public.remove_video(text, text), public.set_feedback_status(text, text),
   public.save_match_result(text, int, int, text, jsonb), public.clear_match_result(text)
-  to authenticated;
+  to anon, authenticated;

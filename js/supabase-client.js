@@ -13,14 +13,8 @@ let client = null;
 /** The client, created on first use. Never called in demo mode. */
 export function supabaseClient() {
   client ??= window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: {
-      // Implicit flow: a magic link works even when opened in a different
-      // browser than the one that asked for it (e.g. the Gmail app on a phone).
-      flowType: 'implicit',
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
+    // Admins sign in with a PIN (see js/controller.js), so Supabase Auth stays off.
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   return client;
 }

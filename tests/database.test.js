@@ -1,6 +1,6 @@
 /**
  * Runs supabase/setup.sql in a real Postgres (PGlite) that mimics Supabase:
- * the anon/authenticated roles, auth.jwt(), and Supabase's permissive
+ * the anon/authenticated roles, request headers, and Supabase's permissive
  * default grants, so these tests prove the "deny by default" rules hold.
  */
 
@@ -8,22 +8,21 @@ import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { matchId, youTubeId } from '../js/logic/ids.js';
 import { RPC_CALLS } from '../js/api.js';
 
 const SETUP_SQL = readFileSync(new URL('../supabase/setup.sql', import.meta.url), 'utf8');
-const ADMIN = { role: 'authenticated', email: 'coach@example.com' };
-const STRANGER = { role: 'authenticated', email: 'someone@example.com' };
+const PIN = 'floorball-pin';
+const ADMIN = { role: 'anon', token: null }; // the token is filled in by signing in
+const STRANGER = { role: 'anon', token: 'made-up-token' };
 const ANON = { role: 'anon' };
 
 const SUPABASE_STAND_IN = `
   create role anon nologin;
   create role authenticated nologin;
-  create schema auth;
-  create function auth.jwt() returns jsonb language sql stable as
-    $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
-  grant usage on schema public, auth to anon, authenticated;
-  grant execute on function auth.jwt() to anon, authenticated;
+  create schema extensions;
+  grant usage on schema public to anon, authenticated;
   -- Supabase grants everything to the API roles by default; setup.sql must take it back.
   alter default privileges in schema public grant all on tables to anon, authenticated;
   alter default privileges in schema public grant all on functions to anon, authenticated;
@@ -31,10 +30,11 @@ const SUPABASE_STAND_IN = `
 
 let db;
 
-/** Runs `sql` as an API caller with the given JWT claims, like PostgREST does. */
-async function as(claims, sql, params = []) {
-  await db.query(`select set_config('request.jwt.claims', $1, false)`, [JSON.stringify(claims)]);
-  await db.exec(`set role ${claims.role}`);
+/** Runs `sql` as an API caller with the given role and admin token, like PostgREST does. */
+async function as(caller, sql, params = []) {
+  const headers = caller.token ? { 'x-admin-token': caller.token } : {};
+  await db.query(`select set_config('request.headers', $1, false)`, [JSON.stringify(headers)]);
+  await db.exec(`set role ${caller.role}`);
   try {
     return await db.query(sql, params);
   } finally {
@@ -42,21 +42,23 @@ async function as(claims, sql, params = []) {
   }
 }
 
+const signIn = async (pin) => (await as(ANON, 'select admin_sign_in($1) as result', [pin])).rows[0].result;
 const rpcError = (claims, sql, params) => as(claims, sql, params).then(() => null, (error) => error.message);
 const bootstrap = async (claims) => (await as(claims, 'select public.bootstrap() as data')).rows[0].data;
 const today = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
 const daysFromToday = (n) => new Date(Date.now() + 8 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
 
 before(async () => {
-  db = new PGlite();
+  db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(SUPABASE_STAND_IN);
   await db.exec(SETUP_SQL);
   await db.exec(SETUP_SQL); // re-running after an update must be safe
   await db.exec(`
-    insert into admins (email) values ('coach@example.com');
     insert into players (name) values ('Alex'), ('Bea'), ('Cass');
     insert into players (name, active) values ('Old', false);
   `);
+  await db.query('select set_admin_pin($1)', [PIN]);
+  ADMIN.token = (await signIn(PIN)).token;
 });
 
 test('anon can read public data but not feedback, admins or inactive players', async () => {
@@ -65,8 +67,9 @@ test('anon can read public data but not feedback, admins or inactive players', a
   assert.deepEqual(data.players.map((p) => p.name), ['Alex', 'Bea', 'Cass']);
   assert.equal(data.feedback, undefined);
   assert.ok(data.sessions.some((s) => s.type === 'Training'), 'weekly trainings are generated');
-  assert.match(await rpcError(ANON, 'select * from feedback'), /permission denied/);
-  assert.match(await rpcError(ANON, 'select * from admins'), /permission denied/);
+  assert.deepEqual((await as(ANON, 'select * from feedback')).rows, []);
+  assert.match(await rpcError(ANON, 'select * from admin_pin'), /permission denied/);
+  assert.match(await rpcError(ANON, 'select * from admin_sessions'), /permission denied/);
 });
 
 test('admins see everything, including inactive players', async () => {
@@ -84,12 +87,40 @@ test('nobody can write to tables directly, only through functions', async () => 
   }
 });
 
-test('admin functions refuse anon and signed-in non-admins', async () => {
-  assert.match(await rpcError(ANON, `select add_player('Zed')`), /permission denied for function/);
+test('admin functions refuse anyone without a valid session', async () => {
+  assert.match(await rpcError(ANON, `select add_player('Zed')`), /Admins only/);
   assert.match(await rpcError(STRANGER, `select add_player('Zed')`), /Admins only/);
   assert.match(await rpcError(ANON, 'select match_result_errors(1, 0, null, $1)', ['[]']), /permission denied/);
   await as(ADMIN, `select add_player('Dani')`);
   assert.match(await rpcError(ADMIN, `select add_player('dani')`), /already on the list/);
+});
+
+test('wrong PINs are refused, and five in a row lock sign-in, even for the right PIN', async () => {
+  assert.equal(await signIn(PIN).then((r) => typeof r.token), 'string');
+  for (let i = 0; i < 4; i++) assert.deepEqual(await signIn('wrong'), { error: 'Wrong PIN.' });
+  await signIn(PIN); // a correct PIN resets the count
+  for (let i = 0; i < 5; i++) assert.deepEqual(await signIn('wrong'), { error: 'Wrong PIN.' });
+  assert.match((await signIn(PIN)).error, /Too many/);
+  assert.equal((await bootstrap(ADMIN)).admin, true, 'devices already signed in keep working');
+  await db.exec(`update admin_pin set locked_until = now() - interval '1 second'`);
+  assert.ok((await signIn(PIN)).token);
+});
+
+test('signing out and changing the PIN end sessions; the browser cannot change the PIN', async () => {
+  const device = { role: 'anon', token: (await signIn(PIN)).token };
+  assert.equal((await bootstrap(device)).admin, true);
+  await as(device, 'select admin_sign_out()');
+  assert.equal((await bootstrap(device)).admin, false);
+  assert.equal((await bootstrap(ADMIN)).admin, true, "other devices aren't signed out");
+
+  assert.match(await rpcError(ADMIN, `select set_admin_pin('hacked-pin')`), /permission denied/);
+  await db.exec(`update admin_sessions set expires_at = now() - interval '1 second'`);
+  assert.equal((await bootstrap(ADMIN)).admin, false, 'expired sessions stop working');
+
+  await db.query('select set_admin_pin($1)', [PIN]);
+  assert.equal((await db.query('select count(*)::int as n from admin_sessions')).rows[0].n, 0);
+  await assert.rejects(db.query(`select set_admin_pin('short')`), /at least 6/);
+  ADMIN.token = (await signIn(PIN)).token;
 });
 
 test('RSVPs: anyone can answer, firm answers lock at the cutoff, TBC stays open', async () => {

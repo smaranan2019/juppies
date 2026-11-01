@@ -27,11 +27,10 @@ Dependencies point one way, down this diagram. Nothing in `logic/` knows about t
  ┌───┴────────────────────────────┐
  │ Data                           │
  │  api.js                        │  action → Postgres function (RPC_CALLS), timeouts, friendly errors
- │  auth.js                       │  email magic links
  │  supabase-client.js            │  the one Supabase client
  │  demo-backend.js               │  in-memory stand-in when no project is configured
  └───┬────────────────────────────┘
-     │ HTTPS (anon key + admin's session token)
+     │ HTTPS (anon key + admin session token)
  ┌───┴────────────────────────────┐
  │ Database: supabase/setup.sql   │  tables, row-level security, one function per action
  └────────────────────────────────┘
@@ -48,7 +47,7 @@ This follows the usual "state flows down, events flow up" model for UI code ([Th
 
 **Writing.** A button or form declares an action, for example `data-action="rsvp"`. `actions.js` handles it and calls `controller.runAction()`. That calls `callApi()`, which calls one Postgres function, for example `submit_rsvp`. After any successful write, the app reloads the whole bootstrap payload, so the screen always matches the database.
 
-**Signing in.** `auth.js` asks Supabase to email a magic link. When the admin opens it, supabase-js stores the session and `main.js` reloads. Each admin function then calls `is_admin()`, which checks the email from the session against the `admins` table.
+**Signing in.** `controller.signInAdmin()` sends the PIN to the `admin_sign_in()` database function, which returns a session token. The device stores it, and `api.js` sends it in the `x-admin-token` header. Each admin function then calls `is_admin()`, which checks the token's hash against `admin_sessions`.
 
 ## Key decisions
 
@@ -59,7 +58,7 @@ This follows the usual "state flows down, events flow up" model for UI code ([Th
 | One `bootstrap()` payload, reloaded after every write | Simple and always consistent | Downloads all seasons' data; fine for one team, revisit after a few seasons |
 | Rules mirrored in the browser | Instant feedback, and a typo doesn't cost a round trip or wipe a form | Two copies. Each names its twin, and tests check the id helpers agree |
 | Players don't sign in | Zero friction for about 30 players | Anyone with the link can see team data and RSVP as anyone. A team code is the planned next step |
-| Admins use email magic links plus an `admins` table | No shared password, and access is revoked by deleting a row | Depends on email delivery; custom SMTP is recommended |
+| Admins share one PIN, checked by the database | Works without email delivery or admin accounts, and is simple for non-technical admins | Can't tell admins apart. Removing one means changing the PIN, and a wrong-PIN lock affects all new sign-ins |
 | supabase-js self-hosted; SheetJS lazy-loaded with an integrity hash | Fewer third-party runtime dependencies; phones don't download the 950 KB Excel library | Vendored files must be updated by hand |
 | Singapore time (UTC+8) hard-coded | The team plays in Singapore, and SG has no daylight saving | Not reusable for other time zones without changes |
 
